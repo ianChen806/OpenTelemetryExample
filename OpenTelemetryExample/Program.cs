@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using OpenTelemetry;
 using OpenTelemetry.Contrib.Extensions.AWSXRay.Trace;
 using OpenTelemetry.Metrics;
@@ -14,7 +15,8 @@ public static class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
-        builder.Services.AddOpenTelemetry(builder);
+        var meter = new Meter("My.Otel.Example", "1.0.0");
+        builder.Services.AddOpenTelemetry(builder, meter);
 
         var app = builder.Build();
         if (app.Environment.IsDevelopment())
@@ -24,11 +26,25 @@ public static class Program
         }
 
         MapEndpoints(app);
+        MapOtelEndpoints(app, meter);
 
         app.Run();
     }
 
-    private static IServiceCollection AddOpenTelemetry(this IServiceCollection services, WebApplicationBuilder builder)
+    private static void MapOtelEndpoints(WebApplication app, Meter meter)
+    {
+        var counter = meter.CreateCounter<int>("call.count", description: "call count");
+        app.MapGet("/metrics", () =>
+        {
+            counter.Add(1);
+            return "Hello World!";
+        });
+    }
+
+    private static IServiceCollection AddOpenTelemetry(
+        this IServiceCollection services,
+        WebApplicationBuilder builder,
+        Meter meter)
     {
         var otel = services.AddOpenTelemetry();
         otel.ConfigureResource(resource =>
@@ -43,6 +59,7 @@ public static class Program
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
+                .AddMeter(meter.Name)
                 .AddMeter("Microsoft.AspNetCore.Hosting")
                 .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
                 .AddOtlpExporter()
