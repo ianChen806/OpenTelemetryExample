@@ -1,12 +1,18 @@
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+
 namespace OpenTelemetryExample;
 
-public class Program
+public static class Program
 {
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
+
+        builder.Services.AddOpenTelemetry(builder);
 
         var app = builder.Build();
         if (app.Environment.IsDevelopment())
@@ -18,6 +24,40 @@ public class Program
         MapEndpoints(app);
 
         app.Run();
+    }
+
+    private static IServiceCollection AddOpenTelemetry(this IServiceCollection services, WebApplicationBuilder builder)
+    {
+        var otel = services.AddOpenTelemetry();
+        otel.ConfigureResource(resource =>
+        {
+            resource.AddService(builder.Environment.ApplicationName,
+                serviceNamespace: "OpenTelemetryExample");
+        });
+
+        otel.WithMetrics(metrics =>
+        {
+            metrics.AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddMeter("Microsoft.AspNetCore.Hosting")
+                .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
+                .AddOtlpExporter()
+                .AddConsoleExporter();
+        });
+
+        otel.WithTracing(tracing =>
+        {
+            tracing.AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddOtlpExporter()
+                .AddConsoleExporter();
+        });
+
+        otel.WithLogging(logging =>
+        {
+        });
+
+        return services;
     }
 
     private static void MapEndpoints(WebApplication app)
