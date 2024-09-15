@@ -1,3 +1,5 @@
+using OpenTelemetry;
+using OpenTelemetry.Contrib.Extensions.AWSXRay.Trace;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -37,8 +39,10 @@ public static class Program
 
         otel.WithMetrics(metrics =>
         {
-            metrics.AddAspNetCoreInstrumentation()
+            metrics
+                .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
+                .AddRuntimeInstrumentation()
                 .AddMeter("Microsoft.AspNetCore.Hosting")
                 .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
                 .AddOtlpExporter()
@@ -47,8 +51,10 @@ public static class Program
 
         otel.WithTracing(tracing =>
         {
-            tracing.AddAspNetCoreInstrumentation()
+            tracing.AddXRayTraceId()
+                .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
+                .AddAWSInstrumentation()
                 .AddOtlpExporter()
                 .AddConsoleExporter();
         });
@@ -57,17 +63,19 @@ public static class Program
         {
         });
 
+        Sdk.SetDefaultTextMapPropagator(new AWSXRayPropagator());
+
         return services;
     }
 
     private static void MapEndpoints(WebApplication app)
     {
-        var summaries = new[]
-        {
-            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-        };
         app.MapGet("/weatherforecast", () =>
             {
+                var summaries = new[]
+                {
+                    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
+                };
                 var forecast = Enumerable.Range(1, 5).Select(index =>
                         new WeatherForecast
                         (
@@ -80,6 +88,11 @@ public static class Program
             })
             .WithName("GetWeatherForecast")
             .WithOpenApi();
+
+        app.MapPost("/exception", () =>
+        {
+            throw new Exception(Guid.NewGuid().ToString());
+        });
     }
 }
 
